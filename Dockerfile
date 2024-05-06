@@ -1,34 +1,41 @@
-FROM fedora:29
+FROM python:3.8-alpine
 
-# Install Ansible Jupyter Kernel
-RUN dnf install -y python2-ipykernel python2-jupyter-core gcc python2-devel \
-    bzip2 openssh openssh-clients python2-crypto python2-psutil glibc-locale-source && \
-    localedef -c -i en_US -f UTF-8 en_US.UTF-8 && \
-    pip install --no-cache-dir wheel psutil && \
-    rm -rf /var/cache/yum
+# Install dependencies
+RUN apk add --no-cache gcc musl-dev libffi-dev openssl-dev make openssh-client
 
-ENV LANG=en_US.UTF-8 \
+# Set environment variables
+ENV LANG=C.UTF-8 \
     LANGUAGE=en_US:en \
-    LC_ALL=en_US.UTF-8
+    LC_ALL=C.UTF-8 \
+    NB_USER=notebook \
+    NB_UID=1000 \
+    HOME=/home/${NB_USER}
 
-ENV NB_USER notebook
-ENV NB_UID 1000
-ENV HOME /home/${NB_USER}
+# Create a new user
+RUN adduser -D -u ${NB_UID} ${NB_USER}
 
-RUN useradd \
-    -c "Default user" \
-	-d /home/notebook \
-    -u ${NB_UID} \
-    ${NB_USER}
-
+# Copy files into the container
 COPY . ${HOME}
-USER root
+
+# Change the owner of the home directory to the new user
 RUN chown -R ${NB_UID} ${HOME}
 
-RUN pip install --no-cache-dir ansible-jupyter-widgets
-RUN pip install --no-cache-dir ansible_kernel==1.0.0 && \
-    python -m ansible_kernel.install
+# Install Python packages
+
+RUN pip install jupyter_client IPython notebook ansible-jupyter-widgets lxml
+RUN pip install --ignore-installed jupyter_client -e ${HOME}/.
+
+# Install the Ansible Jupyter Kernel
+RUN python -m ansible_kernel.install
+
+# Switch to the new user
 USER ${NB_USER}
-WORKDIR /home/notebook/notebooks
+
+# Set the working directory
+WORKDIR ${HOME}/notebooks
+
+# Start Jupyter Notebook
 CMD ["jupyter-notebook", "--ip", "0.0.0.0"]
+
+# Expose the Jupyter Notebook port
 EXPOSE 8888
